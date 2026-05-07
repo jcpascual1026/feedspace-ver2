@@ -22,12 +22,13 @@ if (empty($user_id) || empty($otp_code)) {
 
 // Check OTP validity
 $stmt = $conn->prepare("
-    SELECT id, expires_at 
-    FROM otp 
-    WHERE user_id = ? 
-    AND otp_code = ? 
-    AND expires_at > NOW() 
+    SELECT expires_at
+    FROM otp
+    WHERE user_id = ?
+    AND otp_code = ?
+    AND expires_at > NOW()
     AND is_used = 0
+    LIMIT 1
 ");
 $stmt->bind_param("ss", $user_id, $otp_code);
 $stmt->execute();
@@ -39,18 +40,29 @@ if ($result->num_rows === 0) {
     exit();
 }
 
+$stmt->close();
+
 // Mark OTP as used
-$otp_id = $result->fetch_assoc()['id'];
-$stmt = $conn->prepare("UPDATE otp SET is_used = 1 WHERE id = ?");
-$stmt->bind_param('i', $otp_id);
+$stmt = $conn->prepare("UPDATE otp SET is_used = 1 WHERE user_id = ? AND otp_code = ? AND is_used = 0 LIMIT 1");
+$stmt->bind_param('ss', $user_id, $otp_code);
 $stmt->execute();
 $stmt->close();
 
-// Optional: Update user verification status
-$stmt = $conn->prepare("UPDATE users SET is_verified = 1 WHERE user_id = ?");
+// Update user verification status and create login session
+$stmt = $conn->prepare("SELECT user_id, first_name, last_name, email FROM users WHERE user_id = ? LIMIT 1");
 $stmt->bind_param('s', $user_id);
 $stmt->execute();
+$userResult = $stmt->get_result();
+$user = $userResult->fetch_assoc();
 $stmt->close();
+
+if ($user) {
+    $_SESSION['user_id'] = $user['user_id'];
+    $_SESSION['first_name'] = $user['first_name'];
+    $_SESSION['last_name'] = $user['last_name'];
+    $_SESSION['email'] = $user['email'];
+    $_SESSION['logged_in'] = true;
+}
 
 echo json_encode([
     'success' => true,

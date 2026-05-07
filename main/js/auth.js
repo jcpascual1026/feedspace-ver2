@@ -246,17 +246,18 @@ async function handleForgotPassword(event) {
 // 4. SEND OTP
 async function sendOTP(data) {
   const result = await postAuth('send-otp.php', data);
-  showToast(result);
   return result;
 }
 
 // 4. VERIFY OTP
 async function verifyOTP(data) {
+  console.log('verifyOTP called with data:', data);
   const result = await postAuth('verify-otp.php', data);
+  console.log('verifyOTP result:', result);
   if (result && result.success) {
-    showToast('Account verified successfully!');
+    showToast('Login successful!');
     setTimeout(() => {
-      window.location.href = 'feedspace-integration/main/html/main-feed.html';
+      window.location.href = './main-feed.html';
     }, 1500);
   } else {
     const errorMessage = result?.error || (typeof result === 'string' ? result : 'OTP verification failed');

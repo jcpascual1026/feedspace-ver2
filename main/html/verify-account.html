@@ -22,8 +22,9 @@
           <div class="verify-icon">
             <i class="fas fa-shield-alt"></i>
           </div>
-          <h1 class="auth-title">Verify Your Account</h1>
+          <h1 class="auth-title">Verify Your Login</h1>
           <p class="auth-subtitle">Enter the 6-digit code sent to your email</p>
+          <p class="verify-code-info" id="visibleOtpText" style="display:none;">Use this code for testing.</p>
         </div>
 
         <form class="auth-form" onsubmit="handleVerify(event)">
@@ -77,7 +78,8 @@
 
         <div class="verify-footer">
           <p class="verify-text">Didn't receive the code?</p>
-          <button type="button" class="resend-btn" onclick="handleResend()">
+          <p class="timer-text" id="verifyTimerText">Resend available in 03:00</p>
+          <button type="button" class="resend-btn" id="verifyResendBtn" onclick="handleResend()">
             Resend Code
           </button>
         </div>
@@ -109,25 +111,117 @@
 
       async function handleVerify(event) {
         event.preventDefault();
+        console.log('handleVerify called');
         const code = Array.from(otpInputs)
           .map((input) => input.value)
           .join("");
+        console.log('OTP code:', code);
         if (code.length === 6) {
-          await verifyOTP({ user_id: '<?php echo $_SESSION['user_id'] ?? ''; ?>', otp_code: code });
+          const urlParams = new URLSearchParams(window.location.search);
+          const userId = urlParams.get('user_id');
+          console.log('User ID:', userId);
+          if (!userId) {
+            showToast('User ID is missing');
+            return;
+          }
+          console.log('Calling verifyOTP');
+          await verifyOTP({ user_id: userId, otp_code: code });
         } else {
           showToast('Please enter the complete 6-digit code');
         }
       }
 
+      let verifyTimer = null;
+      let verifySeconds = 180;
+
+      function formatTime(seconds) {
+        const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+        const s = String(seconds % 60).padStart(2, '0');
+        return `${m}:${s}`;
+      }
+
+      function updateVerifyTimer() {
+        const timerText = document.getElementById('verifyTimerText');
+        const resendBtn = document.getElementById('verifyResendBtn');
+        if (!timerText || !resendBtn) {
+          console.error('Timer elements not found');
+          return;
+        }
+
+        if (verifySeconds <= 0) {
+          clearInterval(verifyTimer);
+          verifyTimer = null;
+          resendBtn.disabled = false;
+          timerText.textContent = 'You can resend the code now';
+          return;
+        }
+
+        timerText.textContent = `Resend available in ${formatTime(verifySeconds)}`;
+        resendBtn.disabled = true;
+        verifySeconds -= 1;
+        console.log('Timer updated:', verifySeconds);
+      }
+
+      function startVerifyTimer() {
+        if (verifyTimer) {
+          clearInterval(verifyTimer);
+        }
+        verifySeconds = 180;
+        console.log('Starting timer with 180 seconds');
+        updateVerifyTimer();
+        verifyTimer = setInterval(updateVerifyTimer, 1000);
+      }
+
       async function handleResend() {
-        const result = await sendOTP({ 
-          user_id: '<?php echo $_SESSION['user_id'] ?? ''; ?>', 
-          email: '<?php echo $_SESSION['email'] ?? ''; ?>' 
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = urlParams.get('user_id');
+        if (!userId) {
+          showToast('User ID not found');
+          return;
+        }
+        const resendBtn = document.getElementById('verifyResendBtn');
+        if (resendBtn) {
+          resendBtn.disabled = true;
+        }
+        startVerifyTimer();
+
+        // Call login-otp.php with user_id for resend
+        const result = await postAuth('login-otp.php', { 
+          user_id: userId
         });
         if (result && result.success) {
           showToast('Verification code resent!');
+          const otpText = document.getElementById('visibleOtpText');
+          if (result.otp_code && otpText) {
+            otpText.textContent = `Use this code for testing: ${result.otp_code}`;
+            otpText.style.display = 'block';
+            clearOtpInputs();
+          }
+        } else {
+          showToast(result?.error || result?.message || 'Unable to resend code');
         }
       }
+
+      function clearOtpInputs() {
+        otpInputs.forEach((input) => {
+          input.value = '';
+        });
+      }
+
+      // Show OTP if it was passed from the previous page
+      (function showPassedOtp() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const otpCode = urlParams.get('otp_code');
+        const otpText = document.getElementById('visibleOtpText');
+        if (otpCode && otpText) {
+          otpText.textContent = `Use this code for testing: ${otpCode}`;
+          otpText.style.display = 'block';
+          clearOtpInputs();
+        }
+      })();
+
+      // Start timer on page load
+      startVerifyTimer();
     </script>
   </body>
 </html>
